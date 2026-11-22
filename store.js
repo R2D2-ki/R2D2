@@ -1,13 +1,17 @@
 // Speicher auf dem Gerät (localStorage). Alles in try/catch, weil der Zugriff im privaten Modus fehlschlagen kann.
+import { dayKey, streakAfter, streakNow } from './core/srs.js';
 const KEY = 'hablemos.v1';
 
 const DEFAULTS = {
-  settings: { lang: 'es', model: 'base', voiceURI: '', slow: false, autoSpeak: true, name: '', bromas: true },
+  settings: { lang: 'es', model: 'base', voiceURI: '', slow: false, autoSpeak: true, name: '', bromas: true, sounds: true, autoStop: false, level: '', goal: 10, vocabLevel: '' },
   bromaIn: 0,         // Runden bis zum nächsten Scherz (0 = noch nicht gesetzt)
   bromaSeen: [],      // schon gezeigte Scherze
   trouble: {},        // wort -> { raw, fails, streak, last, example }
   modelLoaded: {},    // modellname -> true, wenn schon einmal geladen
   best: {},           // szenen-id -> bester Durchschnitt
+  vocab: {},          // wort -> { box, due, seen, last }
+  days: {},           // JJJJ-MM-TT -> Anzahl Übungen
+  streak: 0, lastGoalDay: '',
 };
 
 let data = structuredClone(DEFAULTS);
@@ -67,6 +71,23 @@ export const store = {
     save();
   },
   get bromaSeen() { return data.bromaSeen; },
+
+  // ---- Wortschatz, Tagesziel, Serie ----
+  vocabState() { return data.vocab; },
+  setVocab(id, st) { data.vocab[id] = st; save(); },
+  todayCount() { return data.days[dayKey()] || 0; },
+  streak() { return streakNow(data.lastGoalDay, data.streak); },
+  // Eine Übung zählen. Gibt { done, goal, reached } zurück; reached = Tagesziel gerade erreicht.
+  addActivity(n = 1) {
+    const day = dayKey();
+    const before = data.days[day] || 0;
+    data.days[day] = before + n;
+    const goal = data.settings.goal || 10;
+    const reached = before < goal && data.days[day] >= goal;
+    if (reached) { data.streak = streakAfter(data.lastGoalDay, data.streak, day); data.lastGoalDay = day; }
+    save();
+    return { done: data.days[day], goal, reached };
+  },
 
   setBest(id, score) { data.best[id] = Math.max(score, data.best[id] || 0); save(); },
   best(id) { return data.best[id] || 0; },

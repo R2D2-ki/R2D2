@@ -9,7 +9,7 @@ const O = (es, de) => T(es, de);
 
 export const SCENES = [
   {
-    id: 'cafe', icon: '☕', title: T('En la cafetería', 'Im Café'),
+    id: 'cafe', lvl: 'A1', icon: '☕', title: T('En la cafetería', 'Im Café'),
     turns: [
       { partner: T('¡Buenos días! ¿Qué desea tomar?', 'Guten Morgen! Was möchten Sie trinken?'),
         options: [O('Quiero un café con leche, por favor.', 'Ich möchte einen Milchkaffee, bitte.'),
@@ -42,7 +42,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'presentarse', icon: '👋', title: T('Presentarse', 'Sich vorstellen'),
+    id: 'presentarse', lvl: 'A1', icon: '👋', title: T('Presentarse', 'Sich vorstellen'),
     turns: [
       { partner: T('¡Hola! ¿Cómo te llamas?', 'Hallo! Wie heißt du?'),
         options: [O('Me llamo {nombre}. Mucho gusto.', 'Ich heiße {nombre}. Freut mich.'),
@@ -76,7 +76,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'hotel', icon: '🏨', title: T('En el hotel', 'Im Hotel'),
+    id: 'hotel', lvl: 'A2', icon: '🏨', title: T('En el hotel', 'Im Hotel'),
     turns: [
       { partner: T('Buenas tardes. ¿En qué puedo ayudarle?', 'Guten Tag. Wie kann ich Ihnen helfen?'),
         options: [O('Tengo una reserva para esta noche.', 'Ich habe eine Reservierung für heute Nacht.'),
@@ -107,7 +107,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'estacion', icon: '🚆', title: T('En la estación', 'Am Bahnhof'),
+    id: 'estacion', lvl: 'A2', icon: '🚆', title: T('En la estación', 'Am Bahnhof'),
     turns: [
       { partner: T('Hola, ¿adónde va?', 'Hallo, wohin fahren Sie?'),
         options: [O('Voy a Madrid, por favor.', 'Ich fahre nach Madrid, bitte.'),
@@ -136,7 +136,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'camino', icon: '🧭', title: T('Preguntar el camino', 'Nach dem Weg fragen'),
+    id: 'camino', lvl: 'A2', icon: '🧭', title: T('Preguntar el camino', 'Nach dem Weg fragen'),
     turns: [
       { partner: T('Hola, ¿necesita ayuda?', 'Hallo, brauchen Sie Hilfe?'),
         options: [O('Sí, perdone, ¿dónde está la estación?', 'Ja, entschuldigen Sie, wo ist der Bahnhof?'),
@@ -165,7 +165,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'restaurante', icon: '🍽️', title: T('En el restaurante', 'Im Restaurant'),
+    id: 'restaurante', lvl: 'A2', icon: '🍽️', title: T('En el restaurante', 'Im Restaurant'),
     turns: [
       { partner: T('Buenas noches. ¿Mesa para cuántas personas?', 'Guten Abend. Tisch für wie viele Personen?'),
         options: [O('Una mesa para dos, por favor.', 'Einen Tisch für zwei, bitte.'),
@@ -197,7 +197,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'super', icon: '🛒', title: T('En el supermercado', 'Im Supermarkt'),
+    id: 'super', lvl: 'A1', icon: '🛒', title: T('En el supermercado', 'Im Supermarkt'),
     turns: [
       { partner: T('Hola, buenos días. ¿Encuentra todo lo que busca?', 'Hallo, guten Morgen. Finden Sie alles, was Sie suchen?'),
         options: [O('Sí, gracias. Solo estoy mirando.', 'Ja, danke. Ich schaue nur.'),
@@ -225,7 +225,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'farmacia', icon: '💊', title: T('En la farmacia', 'In der Apotheke'),
+    id: 'farmacia', lvl: 'A2', icon: '💊', title: T('En la farmacia', 'In der Apotheke'),
     turns: [
       { partner: T('Buenas tardes. ¿En qué puedo ayudarle?', 'Guten Tag. Wie kann ich Ihnen helfen?'),
         options: [O('Me duele la cabeza.', 'Ich habe Kopfschmerzen.'),
@@ -253,7 +253,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'taxi', icon: '🚕', title: T('En el taxi', 'Im Taxi'),
+    id: 'taxi', lvl: 'A2', icon: '🚕', title: T('En el taxi', 'Im Taxi'),
     turns: [
       { partner: T('Buenas tardes. ¿Adónde vamos?', 'Guten Tag. Wohin fahren wir?'),
         options: [O('Al aeropuerto, por favor.', 'Zum Flughafen, bitte.'),
@@ -282,7 +282,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'charla', icon: '💬', title: T('Charlar un rato', 'Ein bisschen plaudern'),
+    id: 'charla', lvl: 'A2', icon: '💬', title: T('Charlar un rato', 'Ein bisschen plaudern'),
     turns: [
       { partner: T('¡Hola! Qué buen día hace hoy, ¿verdad?', 'Hallo! Was für ein schöner Tag heute, oder?'),
         options: [O('Sí, hace mucho sol.', 'Ja, die Sonne scheint sehr.'),
@@ -316,7 +316,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'peluqueria', icon: '💇', title: T('En la peluquería', 'Im Friseursalon'),
+    id: 'peluqueria', lvl: 'A2', icon: '💇', title: T('En la peluquería', 'Im Friseursalon'),
     turns: [
       { partner: T('Buenos días. Quería un corte de pelo, por favor.', 'Guten Morgen. Ich hätte gern einen Haarschnitt.'),
         options: [O('Buenos días. Claro, siéntese, por favor.', 'Guten Morgen. Natürlich, setzen Sie sich bitte.'),
@@ -346,7 +346,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'veterinario', icon: '🐱', title: T('En el veterinario', 'Beim Tierarzt'),
+    id: 'veterinario', lvl: 'A2', icon: '🐱', title: T('En el veterinario', 'Beim Tierarzt'),
     turns: [
       { partner: T('Buenos días. ¿Cómo se llama su gato?', 'Guten Morgen. Wie heißt Ihre Katze?'),
         options: [O('Mi gato se llama Max.', 'Mein Kater heißt Max.'),
@@ -374,7 +374,7 @@ export const SCENES = [
     ],
   },
   {
-    id: 'arte', icon: '🎨', title: T('En la tienda de arte', 'Im Künstlerbedarf'),
+    id: 'arte', lvl: 'A2', icon: '🎨', title: T('En la tienda de arte', 'Im Künstlerbedarf'),
     turns: [
       { partner: T('Hola, buenos días. ¿Busca algo en especial?', 'Hallo, guten Morgen. Suchen Sie etwas Bestimmtes?'),
         options: [O('Sí, busco pinturas y pinceles.', 'Ja, ich suche Farben und Pinsel.'),

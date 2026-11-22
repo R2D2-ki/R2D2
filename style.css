@@ -131,3 +131,16 @@ body:not(.de) .bub.show-de .de { display: block; }
 
 .bub.joke { border: 2px solid var(--accent); }
 .bub.joke::before { content: "😏"; display: block; font-size: 18px; margin-bottom: 2px; }
+
+/* Statusleiste: deutlich sichtbar, bleibt stehen */
+.dstatus { white-space: pre-line; border-radius: 12px; font-size: 15px; line-height: 1.35; margin-top: 8px; padding: 0 12px; min-height: 0; }
+.dstatus:empty { margin: 0; padding: 0; }
+.dstatus.rec, .dstatus.err { background: var(--wrong-bg); color: var(--wrong); font-weight: 700; padding: 8px 12px; }
+.dstatus.think { background: var(--close-bg); color: var(--close); font-weight: 700; padding: 8px 12px; }
+.dstatus.ok { background: var(--ok-bg); color: var(--ok); font-weight: 700; padding: 8px 12px; }
+.dstatus.info { color: var(--muted); padding: 4px 12px; }
+body.has-dock #view { padding-bottom: calc(230px + var(--safe-b)); }
+#toast { bottom: calc(240px + var(--safe-b)); }
+
+.chip.lvl { min-height: 0; padding: 2px 10px; font-size: 12px; background: var(--bg); color: var(--muted); }
+.chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }

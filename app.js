@@ -2,9 +2,11 @@
 import { evaluate, bestOption, OK_AB } from './core/compare.js';
 import { SCENES, personalize } from './core/scenes.js';
 import { pickBroma } from './core/bromas.js';
+import { VOCAB, PLACEMENT } from './core/vocab.js';
+import { LEVELS, review, pickSession, counts, exerciseFor, placeLevel } from './core/srs.js';
 import { store } from './store.js';
 import { Asr, MODELS } from './asr.js';
-import { startRecording, playSamples, toMono16k, speak, stopSpeaking, spanishVoices } from './audio.js';
+import { startRecording, playSamples, toMono16k, speak, stopSpeaking, spanishVoices, beep, normalize } from './audio.js';
 
 // ---------------------------------------------------------------- Texte (ES Standard, DE umschaltbar)
 const I = {
@@ -13,6 +15,26 @@ const I = {
     bromas: 'Bromas de vez en cuando',
     hint: 'Pista', answerFree: 'Responde en español, con tus propias palabras.',
     noMatchFree: 'No he reconocido ninguna respuesta esperada. Inténtalo otra vez o pide una pista.',
+    recHead: 'Grabando… habla ahora', recVoice: 'Te oigo ✓', recSilent: 'Todavía no oigo nada', recStop: 'toca ⏹ para terminar',
+    noSpeechMsg: 'No he oído nada. Habla más cerca y más fuerte y toca 🎤 otra vez.',
+    notUnderstood: 'No he entendido nada. Inténtalo otra vez y habla más despacio.',
+    understood: 'Entendido', quietHint: 'Habla un poco más fuerte.',
+    waitModel: 'El reconocimiento de voz se está cargando. Espera un momento.',
+    sounds: 'Señales sonoras al empezar y terminar', autoStop: 'Terminar la grabación solo tras una pausa',
+    vocab: 'Vocabulario', toReview: 'para repasar', newWords: 'nuevas', learned: 'aprendidas', vocabNone: 'Hoy no hay palabras pendientes. ¡Vuelve mañana!',
+    whatMeans: '¿Qué significa?', sayIt: 'Dilo en español', dontKnow: 'No lo sé', right: '¡Correcto!', wrongAns: 'Casi. Es:', newWord: 'Nueva', left: 'restantes',
+    vocabDone: 'Ronda terminada', again: 'Otra ronda', correctOf: 'correctas',
+    placement: 'Test de nivel', placementSub: 'Escucha y repite frases', repeatTest: 'repetir',
+    placementIntro: 'Escuchas frases, cada vez más difíciles, y las repites (hasta 15). Cuando se pone difícil, el test termina solo. Así la aplicación calcula tu nivel. Es solo una orientación.',
+    start: 'Empezar', showText: 'Mostrar texto', hearAgain: 'Escuchar otra vez', listenRepeat: 'Escucha la frase y repítela.',
+    yourLevel: 'Tu nivel', levelA1: 'Empiezas desde el principio. Las conversaciones A1 y el vocabulario básico son para ti.',
+    levelA2: 'Ya entiendes lo básico. Las conversaciones A2 y el vocabulario de viajes y vida diaria son para ti.',
+    levelB1: 'Te defiendes bien. Trabaja el vocabulario B1 y practica las conversaciones A2 con rapidez y soltura.',
+    levelB2: 'Tienes un nivel alto. El vocabulario B2 te ayudará a hablar con más precisión.', levelC1: 'Nivel muy alto. El vocabulario C1 es para ti; las conversaciones de la aplicación te quedan fáciles.',
+    lvlN_A1: 'Principiante', lvlN_A2: 'Elemental', lvlN_B1: 'Intermedio', lvlN_B2: 'Avanzado', lvlN_C1: 'Profesional',
+    learnedOf: 'aprendidas', levelVocab: 'Nivel de vocabulario', levelDone: 'Has visto todas las palabras de este nivel. Prueba el siguiente.',
+    levelHint: 'Puedes cambiar el nivel en Ajustes.', today: 'Hoy', days: 'días seguidos', goalReached: '🎉 ¡Objetivo diario cumplido!',
+    dailyGoal: 'Objetivo diario (ejercicios)', levelSet: 'Nivel',
     scenes: 'Conversaciones', custom: 'Frase propia', customSub: 'Escribe una frase y practícala',
     trouble: 'Palabras difíciles', troubleSub: 'Tus puntos débiles', settings: 'Ajustes',
     next: 'Siguiente', other: 'Otra respuesta', sayOne: 'Di una de estas respuestas en voz alta:',
@@ -39,6 +61,26 @@ const I = {
     bromas: 'Ab und zu ein Scherz',
     hint: 'Hinweis', answerFree: 'Antworte auf Spanisch, mit eigenen Worten.',
     noMatchFree: 'Keine erwartete Antwort erkannt. Nochmal versuchen oder einen Hinweis holen.',
+    recHead: 'Aufnahme läuft … sprich jetzt', recVoice: 'Ich höre dich ✓', recSilent: 'Ich höre noch nichts', recStop: 'zum Beenden ⏹ tippen',
+    noSpeechMsg: 'Nichts gehört. Näher und lauter sprechen und 🎤 nochmal tippen.',
+    notUnderstood: 'Nichts verstanden. Nochmal versuchen und langsamer sprechen.',
+    understood: 'Verstanden', quietHint: 'Etwas lauter sprechen.',
+    waitModel: 'Die Spracherkennung wird noch geladen. Bitte kurz warten.',
+    sounds: 'Signaltöne bei Start und Stopp', autoStop: 'Aufnahme nach einer Sprechpause automatisch beenden',
+    vocab: 'Wortschatz', toReview: 'zu wiederholen', newWords: 'neue', learned: 'gelernt', vocabNone: 'Heute stehen keine Wörter an. Komm morgen wieder!',
+    whatMeans: 'Was bedeutet das?', sayIt: 'Sag es auf Spanisch', dontKnow: 'Weiß ich nicht', right: 'Richtig!', wrongAns: 'Nicht ganz. Richtig ist:', newWord: 'Neu', left: 'übrig',
+    vocabDone: 'Runde beendet', again: 'Noch eine Runde', correctOf: 'richtig',
+    placement: 'Einstufung', placementSub: 'Sätze hören und nachsprechen', repeatTest: 'wiederholen',
+    placementIntro: 'Du hörst Sätze, jeweils etwas schwerer (höchstens 15), und sprichst sie nach. Wird es zu schwer, endet der Test von selbst. Daraus schätzt die App dein Niveau. Das ist nur ein Richtwert.',
+    start: 'Starten', showText: 'Text zeigen', hearAgain: 'Nochmal hören', listenRepeat: 'Hör den Satz an und sprich ihn nach.',
+    yourLevel: 'Dein Niveau', levelA1: 'Du fängst am Anfang an. Die A1-Gespräche und der Grundwortschatz passen zu dir.',
+    levelA2: 'Du verstehst schon das Wichtigste. Die A2-Gespräche und der Wortschatz für Reisen und Alltag passen zu dir.',
+    levelB1: 'Du kommst gut zurecht. Übe den B1-Wortschatz und die A2-Gespräche schnell und flüssig.',
+    levelB2: 'Du bist weit. Der B2-Wortschatz hilft dir, dich genauer auszudrücken.', levelC1: 'Sehr hohes Niveau. Der C1-Wortschatz ist für dich; die Gespräche der App sind für dich leicht.',
+    lvlN_A1: 'Anfänger', lvlN_A2: 'Grundkenntnisse', lvlN_B1: 'Mittelstufe', lvlN_B2: 'Fortgeschritten', lvlN_C1: 'Profi',
+    learnedOf: 'gelernt', levelVocab: 'Wortschatz-Stufe', levelDone: 'Du hast alle Wörter dieser Stufe gesehen. Probier die nächste.',
+    levelHint: 'Du kannst das Niveau in den Einstellungen ändern.', today: 'Heute', days: 'Tage in Folge', goalReached: '🎉 Tagesziel erreicht!',
+    dailyGoal: 'Tagesziel (Übungen)', levelSet: 'Niveau',
     scenes: 'Gespräche', custom: 'Eigener Satz', customSub: 'Satz eintippen und üben',
     trouble: 'Schwierige Wörter', troubleSub: 'Deine Schwachstellen', settings: 'Einstellungen',
     next: 'Weiter', other: 'Andere Antwort', sayOne: 'Sag eine dieser Antworten laut:',
@@ -76,7 +118,7 @@ function h(tag, props, ...kids) {
     else if (v === true) el.setAttribute(k, '');
     else el.setAttribute(k, v);
   }
-  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(kid));
   return el;
 }
 const T = k => h('span', { 'data-k': k }, t(k));       // übersetzbarer Text, wird beim Umschalten aktualisiert
@@ -133,6 +175,17 @@ function updateBanner() {
 let active = null;           // { targets[], locked: Index|null, rec, result, attempts, onResult(), onNoMatch() }
 let busy = null;             // null | 'rec' | 'think' | 'play'
 let recHandle = null, token = 0, curPlay = null;
+let statusMsg = null, statusTimer = null;     // dauerhafte Meldung unter den Knöpfen
+let voiceNow = false, voiceUntil = 0;          // hört die App gerade eine Stimme?
+
+// Meldung in der Statusleiste. ms = nach so vielen Millisekunden wieder ausblenden (sonst bleibt sie bis zur nächsten Aktion).
+function setStatus(kind, text, ms) {
+  clearTimeout(statusTimer);
+  statusMsg = text ? { kind, text } : null;
+  if (text && ms) statusTimer = setTimeout(() => { statusMsg = null; updateDock(); }, ms);
+  updateDock();
+}
+const sound = k => { if (store.settings.sounds) beep(k); };
 
 const dock = { el: $('#dock'), model: $('#dModel'), mine: $('#dMine'), mic: $('#dMic'), repeat: $('#dRepeat'), slow: $('#dSlow'), status: $('#dStatus') };
 
@@ -153,7 +206,14 @@ function updateDock() {
   dock.mic.classList.toggle('rec', busy === 'rec');
   dock.mic.classList.toggle('think', busy === 'think');
   dock.slow.classList.toggle('on', store.settings.slow);
-  dock.status.textContent = busy === 'rec' ? t('rec') : busy === 'think' ? t('think') : busy === 'play' ? t('playing') : '';
+  dock.mic.querySelector('.ic').textContent = busy === 'rec' ? '⏹' : '🎤';
+  let kind = '', text = '';
+  if (busy === 'rec') { kind = 'rec'; text = `🔴 ${t('recHead')}\n${voiceNow ? t('recVoice') : t('recSilent')} · ${t('recStop')}`; }
+  else if (busy === 'think') { kind = 'think'; text = '⏳ ' + t('think'); }
+  else if (busy === 'play') { kind = 'info'; text = t('playing'); }
+  else if (statusMsg) { kind = statusMsg.kind; text = statusMsg.text; }
+  dock.status.className = 'dstatus ' + kind;
+  dock.status.textContent = text;
 }
 
 function stopAudio() {
@@ -180,6 +240,7 @@ function say(text, r) { return playSeq([sayStep(text, r)]); }
 
 async function runListen() {
   if (!active) return false;
+  setStatus(null);
   const fake = window.__test.fakeText;
   let rec, text = '';
   if (fake != null) {
@@ -187,24 +248,35 @@ async function runListen() {
     busy = 'think'; updateDock();
     text = fake;
   } else {
-    busy = 'rec'; updateDock();
+    busy = 'rec'; voiceNow = false; voiceUntil = 0; updateDock();
+    if (store.settings.sounds) await beep('start');
     try {
-      recHandle = await startRecording({ onLevel: v => dock.mic.style.setProperty('--lvl', Math.min(1, v * 6).toFixed(2)) });
+      recHandle = await startRecording({
+        autoStop: store.settings.autoStop,
+        onLevel: v => {
+          dock.mic.style.setProperty('--lvl', Math.min(1, v * 6).toFixed(2));
+          const now = performance.now();
+          if (v > 0.012) voiceUntil = now + 600;
+          const nv = now < voiceUntil;
+          if (nv !== voiceNow) { voiceNow = nv; updateDock(); }
+        },
+      });
     } catch (e) {
-      busy = null; recHandle = null; updateDock(); toast(t('micDenied')); return false;
+      busy = null; recHandle = null; setStatus('err', t('micDenied')); sound('err'); return false;
     }
     rec = await recHandle.done;
     recHandle = null;
     dock.mic.style.setProperty('--lvl', 0);
-    if (!rec.hadSpeech) { busy = null; updateDock(); toast(t('noSpeech')); return false; }
+    sound('stop');
+    if (!rec.hadSpeech) { busy = null; setStatus('err', t('noSpeechMsg')); return false; }
     busy = 'think'; updateDock();
-    try { text = await asr.transcribe(await toMono16k(rec.samples, rec.sampleRate)); }
-    catch (e) { busy = null; updateDock(); toast(String(e.message || e)); return false; }
+    try { text = await asr.transcribe(await toMono16k(normalize(rec.samples), rec.sampleRate)); }
+    catch (e) { busy = null; setStatus('err', String(e.message || e)); sound('err'); return false; }
   }
   busy = null;
   if (!active) { updateDock(); return false; }
-  applyHeard(rec, text);
-  return true;
+  if (!text.trim()) { setStatus('err', t('notUnderstood')); sound('err'); return false; }
+  return applyHeard(rec, text);
 }
 
 function applyHeard(rec, text) {
@@ -214,7 +286,10 @@ function applyHeard(rec, text) {
     result = evaluate(active.targets[index], text);
   } else {
     const b = bestOption(text, active.targets);
-    if (!text.trim() || b.result.score < (active.minMatch ?? 0.3)) { updateDock(); toast(t('noMatch')); active.onNoMatch?.(text, rec); return; }
+    if (b.result.score < (active.minMatch ?? 0.3)) {
+      setStatus('err', `${t('heard')}: «${text}»\n${t('noMatchFree')}`);
+      sound('err'); active.onNoMatch?.(text, rec); return false;
+    }
     index = b.index; result = b.result; active.locked = index;
   }
   active.rec = rec; active.result = result; active.attempts = (active.attempts || 0) + 1;
@@ -223,15 +298,21 @@ function applyHeard(rec, text) {
     if (w.status === 'wrong' || w.status === 'missing') store.fail(w.norm, w.raw, target);
     else if (w.status === 'ok') store.pass(w.norm);
   }
-  updateDock();
+  const quiet = rec.peak > 0 && rec.peak < 0.08;
+  setStatus('ok', `✓ ${t('understood')}${quiet ? ' · ' + t('quietHint') : ''}`, 3500);
+  sound('ok');
   active.onResult({ index, result, rec, text, attempt: active.attempts });
+  return true;
 }
 
 dock.mic.addEventListener('click', async () => {
   if (!active) return;
   if (busy === 'rec') { recHandle?.stop(); return; }
   if (busy === 'think') return;
-  if (!asrReady()) { toast(t('needModel')); updateBanner(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  if (!asrReady()) {
+    setStatus('err', asr.state === 'loading' ? t('waitModel') : t('needModel'));
+    updateBanner(); window.scrollTo({ top: 0, behavior: 'smooth' }); return;
+  }
   stopAudio();
   await runListen();
 });
@@ -249,7 +330,7 @@ dock.mine.addEventListener('click', () => {
 });
 dock.repeat.addEventListener('click', async () => {
   if (!active || active.locked == null || !active.rec) return;
-  if (!asrReady()) { toast(t('needModel')); return; }
+  if (!asrReady()) { setStatus('err', asr.state === 'loading' ? t('waitModel') : t('needModel')); return; }
   stopAudio();
   const a = active;
   const ok = await playSeq([
@@ -310,6 +391,11 @@ function bubble(cls, es, de, { speakBtn = true } = {}) {
   return b;
 }
 
+function countActivity() {
+  const r = store.addActivity();
+  if (r.reached) { toast(t('goalReached')); sound('ok'); }
+}
+
 // ---------------------------------------------------------------- Navigation
 const view = $('#view');
 let stack = [];           // Rücksprung-Funktionen
@@ -337,12 +423,23 @@ const sceneList = () => personalize(SCENES, store.settings.name);
 function home() {
   stack = [];
   screen(home); reset(); setTitle('hello');
+  view.append(statsCard());
+  const lvl = store.settings.level;
+  const cnt = counts(VOCAB, store.vocabState(), { level: vocabLevel() });
+  view.append(h('div', { class: 'grid', style: 'margin-bottom:6px' },
+    h('button', { class: 'tile wide', onclick: () => { push(home); vocabScreen(); } },
+      h('div', { class: 'e' }, '📚'), h('div', {}, h('div', { class: 'n' }, T('vocab')),
+        h('div', { class: 's' }, `${vocabLevel()} · ${cnt.due} ${t('toReview')} · ${cnt.learned}/${cnt.total} ${t('learned')}`))),
+    h('button', { class: 'tile wide', onclick: () => { push(home); placementScreen(); } },
+      h('div', { class: 'e' }, '🎧'), h('div', {}, h('div', { class: 'n' }, T('placement')),
+        h('div', { class: 's' }, lvl ? `${t('yourLevel')}: ${lvl} ${t('lvlN_' + lvl)} · ${t('repeatTest')}` : t('placementSub'))))));
   view.append(h('h2', { class: 'sec' }, T('scenes')));
   const grid = h('div', { class: 'grid' });
-  for (const sc of sceneList()) {
+  const lvlOrder = { A1: 1, A2: 2, B1: 3 };
+  for (const sc of sceneList().sort((a, b) => lvlOrder[a.lvl] - lvlOrder[b.lvl])) {
     const best = store.best(sc.id);
     grid.append(h('button', { class: 'tile', onclick: () => { push(home); sceneScreen(sc); } },
-      h('div', { class: 'e' }, sc.icon),
+      h('div', { class: 'row', style: 'justify-content:space-between;width:100%' }, h('span', { class: 'e' }, sc.icon), h('span', { class: 'chip lvl' }, sc.lvl)),
       h('div', {}, h('div', { class: 'n' }, sc.title.es),
         h('div', { class: 's de', }, sc.title.de),
         best ? h('div', { class: 's' }, `${t('best')}: ${pct(best)} %`) : null)));
@@ -410,6 +507,7 @@ function sceneScreen(sc) {
 
   // Nach einer Runde (beantwortet oder übersprungen): nächste Runde, ggf. mit einem Scherz dazwischen
   function afterTurn(me, joke) {
+    if (me) countActivity();
     me?.querySelector('.row')?.remove();
     if (joke) { nextTurn(); return; }          // idx zeigt schon auf die nächste normale Runde
     idx++;
@@ -463,7 +561,7 @@ function drillScreen(targets) {
       h('div', { class: 'muted small' }, `${i + 1} ${t('of')} ${targets.length}`),
       slot,
       h('div', { class: 'row', style: 'margin-top:10px' },
-        h('button', { class: 'btn small', onclick: () => { i++; show(); } }, T('next'), ' →')));
+        h('button', { class: 'btn small', onclick: () => { if (active?.result) countActivity(); i++; show(); } }, T('next'), ' →')));
     holder.replaceChildren(card);
     setActive({
       targets: [target], locked: 0, rec: null, result: null,
@@ -528,13 +626,226 @@ function settings() {
       onchange: e => store.setSetting('name', e.target.value.trim()) }));
   const bromaCard = h('div', { class: 'card' },
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.bromas, onchange: e => store.setSetting('bromas', e.target.checked) }), T('bromas')));
+  const goalCard = h('div', { class: 'card' },
+    h('h3', { style: 'margin-bottom:6px' }, T('dailyGoal')),
+    h('select', { id: 'goalSel', onchange: e => store.setSetting('goal', Number(e.target.value)) },
+      [5, 10, 20, 30].map(n => h('option', { value: String(n), selected: (s.goal || 10) === n }, String(n)))),
+    h('h3', { style: 'margin:12px 0 6px' }, T('levelSet')),
+    h('select', { id: 'levelSel', onchange: e => store.setSetting('level', e.target.value) },
+      ['', ...LEVELS].map(l => h('option', { value: l, selected: (s.level || '') === l }, l ? `${l} · ${t('lvlN_' + l)}` : '–'))));
   const optCard = h('div', { class: 'card' },
+    h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.sounds, onchange: e => store.setSetting('sounds', e.target.checked) }), T('sounds')),
+    h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.autoStop, onchange: e => store.setSetting('autoStop', e.target.checked) }), T('autoStop')),
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.autoSpeak, onchange: e => store.setSetting('autoSpeak', e.target.checked) }), T('autoSpeak')),
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.slow, onchange: e => store.setSetting('slow', e.target.checked) }), T('slowDefault')),
     h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn small ghost', onclick: () => { store.clearTrouble(); toast('✓'); } }, T('reset'))),
     h('p', { class: 'muted small' }, T('persistent')));
-  view.append(nameCard, bromaCard, modelCard, voiceCard, optCard);
+  view.append(nameCard, goalCard, bromaCard, modelCard, voiceCard, optCard);
   relabel();
+}
+
+// ---------------------------------------------------------------- Tagesziel und Serie
+function statsCard() {
+  const goal = store.settings.goal || 10, done = store.todayCount(), st = store.streak();
+  const pc = Math.min(100, Math.round((done / goal) * 100));
+  return h('div', { class: 'card' },
+    h('div', { class: 'row', style: 'justify-content:space-between' },
+      h('b', {}, '🔥 ', String(st), ' ', T('days')),
+      h('span', { class: done >= goal ? 'score g' : 'muted' }, `${t('today')}: ${done} / ${goal}`)),
+    h('div', { class: 'bar' }, h('i', { style: `width:${pc}%` })));
+}
+
+// ---------------------------------------------------------------- Wortschatz-Trainer
+const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// Stufe, aus der neue Wörter kommen: zuletzt gewählt, sonst die eigene Stufe, sonst A1
+const hasWords = l => VOCAB.some(w => w.lvl === l);
+function vocabLevel() {
+  const l = store.settings.vocabLevel || store.settings.level || 'A1';
+  return hasWords(l) ? l : 'A1';
+}
+
+function vocabScreen() {
+  screen(vocabScreen); reset(); setTitle('vocab');
+  const level = vocabLevel();
+  const cnt = counts(VOCAB, store.vocabState(), { level });
+  const chips = h('div', { class: 'row', style: 'margin-bottom:8px' },
+    LEVELS.filter(hasWords).map(l => h('button', { class: 'chip' + (l === level ? ' on' : ''), onclick: () => { store.setSetting('vocabLevel', l); vocabScreen(); } }, l)));
+  const holder = h('div');
+  view.append(chips,
+    h('div', { class: 'muted small', style: 'margin-bottom:8px' }, `${t('lvlN_' + level)} · ${cnt.learned}/${cnt.total} ${t('learnedOf')} · ${cnt.fresh} ${t('newWords')}`),
+    holder, legend());
+  const session = pickSession(VOCAB, store.vocabState(), { level, size: 10, newMax: 5 });
+  if (!session.length) {
+    holder.append(h('div', { class: 'card' }, cnt.fresh === 0 ? T('levelDone') : T('vocabNone'), h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn', onclick: goBack }, T('finish')))));
+    relabel(); return;
+  }
+  const queue = [...session];
+  const retried = new Set();
+  let right = 0, total = 0, fresh = 0;
+
+  function grade(w, correct, wasNew) {
+    const old = store.vocabState()[w.es];
+    store.setVocab(w.es, review(old, correct));
+    total++; if (correct) right++;
+    if (wasNew) fresh++;
+    if (!correct && !retried.has(w.es)) { retried.add(w.es); queue.push(w); }   // einmal am Ende der Runde nochmal
+    countActivity();
+  }
+
+  function next() {
+    setActive(null);
+    const w = queue.shift();
+    if (!w) return finishRound();
+    const st = store.vocabState()[w.es];
+    (exerciseFor(st) === 'listen' ? listenCard : speakCard)(w, !st);
+  }
+
+  function frame(w, wasNew, ...inner) {
+    const left = queue.length + 1;
+    return h('div', { class: 'card' },
+      h('div', { class: 'row', style: 'justify-content:space-between' },
+        h('span', { class: 'muted small' }, `${left} ${t('left')}`),
+        wasNew ? h('span', { class: 'score y' }, t('newWord')) : null),
+      inner);
+  }
+
+  function listenCard(w, wasNew) {
+    // Falsche Antworten möglichst aus demselben Thema (schwerer und sinnvoller), sonst aus demselben Niveau
+    const pool = VOCAB.filter(x => x.es !== w.es && x.de !== w.de && x.lvl === w.lvl);
+    const near = shuffle(pool.filter(x => x.theme === w.theme)), far = shuffle(pool.filter(x => x.theme !== w.theme));
+    const choices = shuffle([w, ...[...near, ...far].slice(0, 2)]);
+    const result = h('div', { style: 'margin-top:10px' });
+    const btns = choices.map(c => h('button', { class: 'btn ghost', style: 'width:100%;margin-top:8px;text-align:left', onclick: () => {
+      btns.forEach(b => { b.disabled = true; });
+      const ok = c.es === w.es;
+      btns[choices.indexOf(c)].style.borderColor = ok ? 'var(--ok)' : 'var(--wrong)';
+      if (!ok) btns[choices.indexOf(w)].style.borderColor = 'var(--ok)';
+      grade(w, ok, wasNew);
+      result.replaceChildren(h('b', { style: `color:var(${ok ? '--ok' : '--wrong'})` }, ok ? t('right') : t('wrongAns')),
+        ' ', h('span', { class: 'sent', style: 'font-size:19px' }, w.es), ' = ', w.de,
+        h('div', { class: 'row', style: 'margin-top:10px' }, h('button', { class: 'btn small', onclick: next }, T('next'), ' →')));
+      relabel();
+    } }, c.de));
+    holder.replaceChildren(frame(w, wasNew,
+      h('div', { class: 'muted' }, T('whatMeans')),
+      h('div', { class: 'row', style: 'margin:6px 0' },
+        h('button', { class: 'btn', onclick: () => say(w.es, 0.8) }, '🔊'),
+        h('span', { class: 'sent' }, w.es)),
+      btns, result));
+    say(w.es, 0.8); relabel();
+  }
+
+  function speakCard(w, wasNew) {
+    let done = false, tries = 0;
+    const slot = h('div', { style: 'margin-top:8px' });
+    const actions = h('div', { class: 'row', style: 'margin-top:10px' });
+    const finish = ok => {
+      if (done) return; done = true;
+      grade(w, ok, wasNew);
+      actions.replaceChildren(h('button', { class: 'btn small', onclick: next }, T('next'), ' →'));
+      relabel();
+    };
+    const reveal = () => {
+      slot.replaceChildren(h('div', { class: 'sent' }, w.es));
+      say(w.es, 0.8); finish(false);
+    };
+    actions.append(h('button', { class: 'btn small ghost', onclick: reveal }, T('dontKnow')));
+    holder.replaceChildren(frame(w, wasNew,
+      h('div', { class: 'muted' }, T('sayIt')),
+      h('div', { class: 'sent', style: 'font-size:26px;margin:6px 0' }, w.de), slot, actions));
+    setActive({
+      targets: [w.es], locked: 0, rec: null, result: null,
+      onResult: ({ result, text }) => {
+        if (done) { slot.replaceChildren(resultBlock(result, text)); relabel(); return; }
+        tries++;
+        slot.replaceChildren(resultBlock(result, text));
+        if (result.score >= OK_AB) finish(true);
+        else if (tries >= 2) { say(w.es, 0.8); finish(false); }
+        relabel();
+      },
+    });
+    relabel();
+  }
+
+  function finishRound() {
+    setActive(null);
+    holder.replaceChildren(h('div', { class: 'card' },
+      h('h3', {}, T('vocabDone')),
+      h('p', {}, `${right} / ${total} ${t('correctOf')}${fresh ? ` · ${fresh} ${t('newWords')}` : ''}`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', onclick: vocabScreen }, T('again')),
+        h('button', { class: 'btn ghost', onclick: () => { stack = []; home(); } }, T('finish')))));
+    relabel();
+  }
+
+  next();
+}
+
+// ---------------------------------------------------------------- Einstufung (hören und nachsprechen)
+function placementScreen() {
+  screen(placementScreen); reset(); setTitle('placement');
+  const holder = h('div');
+  view.append(holder);
+  const items = LEVELS.flatMap(b => (PLACEMENT[b] || []).map(es => ({ band: b, es })));
+  const bands = Object.fromEntries(LEVELS.map(l => [l, []]));
+  let i = 0;
+
+  holder.append(h('div', { class: 'card' }, h('h3', {}, T('placement')), h('p', {}, T('placementIntro')),
+    h('button', { class: 'btn', onclick: () => { ensureReady() && show(); } }, T('start'))));
+  relabel();
+
+  function ensureReady() {
+    if (asrReady()) return true;
+    toast(asr.state === 'loading' ? t('waitModel') : t('needModel')); updateBanner(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    return false;
+  }
+
+  function show() {
+    if (i >= items.length) return finish();
+    // Nach den drei Sätzen einer Stufe: zu schwach -> Test beenden
+    if (i > 0 && items[i].band !== items[i - 1].band) {
+      const b = bands[items[i - 1].band];
+      if (b.reduce((x, y) => x + y, 0) / b.length < 0.75) return finish();
+    }
+    const it = items[i];
+    const slot = h('div', { style: 'margin-top:8px' });
+    const textBtn = h('button', { class: 'btn small ghost', onclick: () => { slot.replaceChildren(h('div', { class: 'sent' }, it.es)); textBtn.hidden = true; } }, T('showText'));
+    let answered = false;
+    const next = () => { i++; show(); };
+    holder.replaceChildren(h('div', { class: 'card' },
+      h('div', { class: 'muted small' }, `${it.band} · ${items.slice(0, i).filter(x => x.band === it.band).length + 1} ${t('of')} 3`),
+      h('p', {}, T('listenRepeat')),
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => say(it.es, 0.9) }, '🔊 ', T('hearAgain')), textBtn),
+      slot,
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('button', { class: 'btn small ghost', onclick: () => { if (!answered) bands[it.band].push(0); next(); } }, T('skip')))));
+    setActive({
+      targets: [it.es], locked: 0, rec: null, result: null,
+      onResult: ({ result, text }) => {
+        slot.replaceChildren(resultBlock(result, text));
+        if (!answered) { answered = true; bands[it.band].push(result.score); }
+        else bands[it.band][bands[it.band].length - 1] = Math.max(bands[it.band].at(-1), result.score);
+        const row = holder.querySelector('.row:last-child');
+        if (row && !row.querySelector('.go')) row.prepend(h('button', { class: 'btn small go', onclick: next }, T('next'), ' →'));
+        relabel();
+      },
+    });
+    say(it.es, 0.9); relabel();
+  }
+
+  function finish() {
+    setActive(null);
+    const level = placeLevel(bands);
+    store.setSetting('level', level);
+    store.setSetting('vocabLevel', level);
+    holder.replaceChildren(h('div', { class: 'card' },
+      h('h3', {}, T('yourLevel'), ': ', level, ' · ', T('lvlN_' + level)),
+      h('p', {}, T('level' + level)),
+      h('p', { class: 'muted small' }, T('levelHint')),
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => { stack = []; home(); } }, T('finish')))));
+    relabel();
+  }
 }
 
 // ---------------------------------------------------------------- Start der App

@@ -14,8 +14,8 @@ export function audioCtx() {
 
 // ---------- Aufnahme ----------
 // Gibt ein Handle zurück: { stop(), done: Promise<rec> }
-// Stoppt von selbst, wenn nach dem Sprechen eine Pause kommt, oder nach maxSec.
-export async function startRecording({ maxSec = 20, onLevel } = {}) {
+// Standard: läuft, bis du selbst stoppst (oder nach maxSec). Nur mit autoStop endet sie von selbst nach einer Sprechpause.
+export async function startRecording({ maxSec = 30, autoStop = false, onLevel } = {}) {
   const c = audioCtx();
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -26,7 +26,7 @@ export async function startRecording({ maxSec = 20, onLevel } = {}) {
   mute.gain.value = 0;
 
   const chunks = [];
-  let elapsed = 0, floorSum = 0, floorN = 0, thresh = 0.02;
+  let elapsed = 0, floorSum = 0, floorN = 0, thresh = 0.01;
   let speaking = false, speechMs = 0, silenceMs = 0, peak = 0;
   let finished = false, resolveDone;
   const done = new Promise(r => (resolveDone = r));
@@ -43,7 +43,7 @@ export async function startRecording({ maxSec = 20, onLevel } = {}) {
     for (const a of chunks) { samples.set(a, o); o += a.length; }
     resolveDone({
       samples, sampleRate: c.sampleRate, durationSec: total / c.sampleRate,
-      peak, hadSpeech: speechMs >= 250,
+      peak, hadSpeech: speechMs >= 200 || peak >= 0.03,
     });
   }
 
@@ -64,11 +64,11 @@ export async function startRecording({ maxSec = 20, onLevel } = {}) {
     onLevel && onLevel(rms);
 
     // Grundrauschen aus den ersten 400 ms schätzen
-    if (elapsed <= 400) { floorSum += rms; floorN++; thresh = Math.max(0.02, (floorSum / floorN) * 3); return; }
+    if (elapsed <= 400) { floorSum += rms; floorN++; thresh = Math.max(0.01, (floorSum / floorN) * 2.5); return; }
 
     if (rms > thresh) { speaking = true; speechMs += ms; silenceMs = 0; }
-    else if (speaking) { silenceMs += ms; if (silenceMs >= 1400) finish(); }
-    if (!speaking && elapsed > 9000) finish();      // lange nichts gesagt
+    else if (speaking) { silenceMs += ms; if (autoStop && silenceMs >= 2200) finish(); }
+    if (autoStop && !speaking && elapsed > 9000) finish();      // lange nichts gesagt
     if (elapsed >= maxSec * 1000) finish();
   };
 
@@ -76,6 +76,42 @@ export async function startRecording({ maxSec = 20, onLevel } = {}) {
   proc.connect(mute);
   mute.connect(c.destination);
   return { stop: finish, done };
+}
+
+// ---------- Kurze Signaltöne (Start, Stopp, verstanden, nicht verstanden) ----------
+const TOENE = {
+  start: [[880, 0.11]],
+  stop:  [[520, 0.11]],
+  ok:    [[660, 0.09], [880, 0.12]],
+  err:   [[300, 0.16]],
+};
+export function beep(kind) {
+  try {
+    const c = audioCtx();
+    let t0 = c.currentTime + 0.01;
+    for (const [f, d] of TOENE[kind] || []) {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      o.connect(g); g.connect(c.destination);
+      o.start(t0); o.stop(t0 + d + 0.02);
+      t0 += d + 0.02;
+    }
+    return new Promise(r => setTimeout(r, (TOENE[kind] || []).reduce((a, [, d]) => a + d + 0.02, 0) * 1000));
+  } catch { return Promise.resolve(); }
+}
+
+// Leise Aufnahmen für die Erkennung anheben (höchstens 12-fach)
+export function normalize(samples) {
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) { const a = Math.abs(samples[i]); if (a > peak) peak = a; }
+  if (peak < 0.002 || peak > 0.5) return samples;
+  const g = Math.min(12, 0.8 / peak);
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = samples[i] * g;
+  return out;
 }
 
 // ---------- Wiedergabe der eigenen Aufnahme ----------
