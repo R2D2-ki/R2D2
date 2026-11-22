@@ -2,7 +2,9 @@
 const KEY = 'hablemos.v1';
 
 const DEFAULTS = {
-  settings: { lang: 'es', model: 'base', voiceURI: '', slow: false, autoSpeak: true, name: '' },
+  settings: { lang: 'es', model: 'base', voiceURI: '', slow: false, autoSpeak: true, name: '', bromas: true },
+  bromaIn: 0,         // Runden bis zum nächsten Scherz (0 = noch nicht gesetzt)
+  bromaSeen: [],      // schon gezeigte Scherze
   trouble: {},        // wort -> { raw, fails, streak, last, example }
   modelLoaded: {},    // modellname -> true, wenn schon einmal geladen
   best: {},           // szenen-id -> bester Durchschnitt
@@ -51,6 +53,20 @@ export const store = {
   },
   removeTrouble(norm) { delete data.trouble[norm]; save(); },
   clearTrouble() { data.trouble = {}; save(); },
+
+  // Zählt eine abgeschlossene Runde. Gibt true zurück, wenn jetzt ein Scherz dran ist (alle 10 bis 15 Runden).
+  tickBroma() {
+    if (!data.bromaIn) data.bromaIn = 10 + Math.floor(Math.random() * 6);
+    data.bromaIn--;
+    save();
+    return data.bromaIn <= 0;
+  },
+  markBroma(id, reset) {
+    data.bromaSeen = reset ? [id] : [...data.bromaSeen, id];
+    data.bromaIn = 10 + Math.floor(Math.random() * 6);
+    save();
+  },
+  get bromaSeen() { return data.bromaSeen; },
 
   setBest(id, score) { data.best[id] = Math.max(score, data.best[id] || 0); save(); },
   best(id) { return data.best[id] || 0; },

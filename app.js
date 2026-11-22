@@ -1,6 +1,7 @@
 // Oberfläche. Der Kern (Vergleich, Szenen, Speicher, Audio, Whisper) liegt in eigenen Dateien.
 import { evaluate, bestOption, OK_AB } from './core/compare.js';
 import { SCENES, personalize } from './core/scenes.js';
+import { pickBroma } from './core/bromas.js';
 import { store } from './store.js';
 import { Asr, MODELS } from './asr.js';
 import { startRecording, playSamples, toMono16k, speak, stopSpeaking, spanishVoices } from './audio.js';
@@ -8,7 +9,8 @@ import { startRecording, playSamples, toMono16k, speak, stopSpeaking, spanishVoi
 // ---------------------------------------------------------------- Texte (ES Standard, DE umschaltbar)
 const I = {
   es: {
-    yourName: 'Tu nombre (para las frases)',
+    yourName: 'Tu nombre (para las frases)', skip: 'Saltar',
+    bromas: 'Bromas de vez en cuando',
     hint: 'Pista', answerFree: 'Responde en español, con tus propias palabras.',
     noMatchFree: 'No he reconocido ninguna respuesta esperada. Inténtalo otra vez o pide una pista.',
     scenes: 'Conversaciones', custom: 'Frase propia', customSub: 'Escribe una frase y practícala',
@@ -33,7 +35,8 @@ const I = {
     persistent: 'Guardado en este iPhone', hello: 'Hablemos',
   },
   de: {
-    yourName: 'Dein Name (für die Sätze)',
+    yourName: 'Dein Name (für die Sätze)', skip: 'Überspringen',
+    bromas: 'Ab und zu ein Scherz',
     hint: 'Hinweis', answerFree: 'Antworte auf Spanisch, mit eigenen Worten.',
     noMatchFree: 'Keine erwartete Antwort erkannt. Nochmal versuchen oder einen Hinweis holen.',
     scenes: 'Gespräche', custom: 'Eigener Satz', customSub: 'Satz eintippen und üben',
@@ -363,20 +366,21 @@ function sceneScreen(sc) {
 
   // Antwortmöglichkeiten sind erst einmal verborgen: du antwortest aus dem Kopf.
   // Die App ordnet das Gesagte der ähnlichsten erwarteten Antwort zu. Der Hinweis-Knopf zeigt sie an.
-  function optionsCard(turn) {
+  function optionsCard(turn, onSkip) {
     const list = h('div', { hidden: true, style: 'margin-top:10px' },
       turn.options.map(o => h('div', { class: 'opt' }, h('div', { class: 'es' }, o.es), h('div', { class: 'de' }, o.de))));
     const note = h('div', { class: 'heard' });
     const btn = h('button', { class: 'btn small ghost', onclick: () => { list.hidden = false; btn.hidden = true; scrollEnd(); } }, '💡 ', T('hint'));
-    const card = h('div', { class: 'opts' }, h('div', { class: 'hint' }, T('answerFree')), btn, list, note);
+    const skip = h('button', { class: 'btn small ghost', onclick: onSkip }, T('skip'));
+    const card = h('div', { class: 'opts' }, h('div', { class: 'hint' }, T('answerFree')), h('div', { class: 'row' }, btn, skip), list, note);
     card.noteEl = note;
     return card;
   }
 
-  function nextTurn() {
-    const turn = sc.turns[idx];
-    chat.append(bubble('', turn.partner.es, turn.partner.de));
-    const opts = optionsCard(turn);
+  // joke = true: Scherz-Runde zwischendurch. Sie zählt nicht für Durchschnitt und Bestwert.
+  function nextTurn(turn = sc.turns[idx], joke = false) {
+    chat.append(bubble(joke ? 'joke' : '', turn.partner.es, turn.partner.de));
+    const opts = optionsCard(turn, () => { stopAudio(); opts.remove(); afterTurn(null, joke); });
     chat.append(opts);
     let me = null;
     if (store.settings.autoSpeak) say(turn.partner.es);
@@ -390,11 +394,11 @@ function sceneScreen(sc) {
         relabel(); scrollEnd();
       },
       onResult: ({ index, result, text }) => {
-        results[idx] = { target: turn.options[index].es, result };
+        if (!joke) results[idx] = { target: turn.options[index].es, result };
         const body = h('div', {},
           resultBlock(result, text),
           h('div', { class: 'row', style: 'margin-top:10px' },
-            h('button', { class: 'btn small', onclick: () => advance(me) }, T('next'), ' →'),
+            h('button', { class: 'btn small', onclick: () => afterTurn(me, joke) }, T('next'), ' →'),
             h('button', { class: 'btn small ghost', onclick: () => { me.replaceWith(opts); active.locked = null; active.rec = null; active.result = null; updateDock(); } }, T('other'))));
         const nb = h('div', { class: 'bub me' }, body);
         if (me) me.replaceWith(nb); else opts.replaceWith(nb);
@@ -404,22 +408,30 @@ function sceneScreen(sc) {
     });
   }
 
-  function advance(me) {
-    me.querySelector('.row')?.remove();
+  // Nach einer Runde (beantwortet oder übersprungen): nächste Runde, ggf. mit einem Scherz dazwischen
+  function afterTurn(me, joke) {
+    me?.querySelector('.row')?.remove();
+    if (joke) { nextTurn(); return; }          // idx zeigt schon auf die nächste normale Runde
     idx++;
-    if (idx < sc.turns.length) nextTurn(); else finish();
+    if (idx >= sc.turns.length) { finish(); return; }
+    if (store.settings.bromas && store.tickBroma()) {
+      const b = pickBroma(store.bromaSeen);     // Name im Scherz ist fest: Roland
+      store.markBroma(b.id, b.reset);
+      nextTurn(b.turn, true);
+    } else nextTurn();
   }
 
   function finish() {
-    const scores = results.map(r => r.result.score);
-    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-    store.setBest(sc.id, avg);
+    const done = results.filter(Boolean);
     setActive(null);
-    const weak = results.filter(r => r.result.score < OK_AB || r.result.words.some(w => w.status === 'wrong' || w.status === 'missing'));
+    if (!done.length) { chat.append(h('div', { class: 'card' }, h('h3', {}, T('done')), h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn ghost', onclick: () => { stack = []; home(); } }, T('finish'))))); relabel(); scrollEnd(); return; }
+    const avg = done.reduce((a, r) => a + r.result.score, 0) / done.length;
+    store.setBest(sc.id, avg);
+    const weak = done.filter(r => r.result.score < OK_AB || r.result.words.some(w => w.status === 'wrong' || w.status === 'missing'));
     chat.append(h('div', { class: 'card' },
       h('h3', {}, T('done')),
       h('p', {}, T('avg'), ': ', h('span', { class: 'score ' + scoreClass(avg) }, pct(avg) + ' %')),
-      results.map(r => h('div', { class: 'item' }, h('div', { class: 'grow' }, markedSentence(r.result)),
+      done.map(r => h('div', { class: 'item' }, h('div', { class: 'grow' }, markedSentence(r.result)),
         h('span', { class: 'score ' + scoreClass(r.result.score) }, pct(r.result.score) + ' %'))),
       weak.length === 0 ? h('p', {}, h('b', {}, T('allGood'))) : null,
       h('div', { class: 'row', style: 'margin-top:8px' },
@@ -514,12 +526,14 @@ function settings() {
   const nameCard = h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:6px' }, T('yourName')),
     h('input', { type: 'text', id: 'nameInput', value: s.name || '', placeholder: 'María', autocomplete: 'off', autocapitalize: 'words', spellcheck: 'false',
       onchange: e => store.setSetting('name', e.target.value.trim()) }));
+  const bromaCard = h('div', { class: 'card' },
+    h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.bromas, onchange: e => store.setSetting('bromas', e.target.checked) }), T('bromas')));
   const optCard = h('div', { class: 'card' },
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.autoSpeak, onchange: e => store.setSetting('autoSpeak', e.target.checked) }), T('autoSpeak')),
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.slow, onchange: e => store.setSetting('slow', e.target.checked) }), T('slowDefault')),
     h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn small ghost', onclick: () => { store.clearTrouble(); toast('✓'); } }, T('reset'))),
     h('p', { class: 'muted small' }, T('persistent')));
-  view.append(nameCard, modelCard, voiceCard, optCard);
+  view.append(nameCard, bromaCard, modelCard, voiceCard, optCard);
   relabel();
 }
 

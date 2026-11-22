@@ -128,3 +128,6 @@ body:not(.de) .de { display: none; }
 body:not(.de) .bub.show-de .de { display: block; }
 .bub.show-de .de { display: block; }
 .tile.wide { justify-content: flex-start; }
+
+.bub.joke { border: 2px solid var(--accent); }
+.bub.joke::before { content: "😏"; display: block; font-size: 18px; margin-bottom: 2px; }
