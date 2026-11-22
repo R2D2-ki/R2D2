@@ -8,6 +8,25 @@ import { store } from './store.js';
 import { Asr, MODELS } from './asr.js';
 import { startRecording, playSamples, toMono16k, speak, stopSpeaking, spanishVoices, beep, normalize } from './audio.js';
 
+// ---------------------------------------------------------------- Neustart-Erkennung
+// Wird die Seite vom iPhone beendet (zu wenig Speicher) und neu geladen, merkt die App das hier:
+// beim Beenden einer Seite setzt der Browser 'pagehide'. Fehlt dieses Zeichen beim nächsten Start, war es ein Absturz.
+const SS = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch {} },
+};
+const crashInfo = (() => {
+  const was = SS.get('hablemos.alive'), clean = SS.get('hablemos.clean');
+  const info = was && !clean ? { step: SS.get('hablemos.step') || '?', t: Date.now() } : null;
+  SS.set('hablemos.alive', '1'); SS.del('hablemos.clean');
+  return info;
+})();
+const resumeAt = (() => { try { return JSON.parse(SS.get('hablemos.resume')); } catch { return null; } })();
+addEventListener('pagehide', e => { if (!e.persisted) SS.set('hablemos.clean', '1'); });
+addEventListener('pageshow', e => { if (e.persisted) SS.del('hablemos.clean'); });
+function mark(step) { SS.set('hablemos.step', step); }
+
 // ---------------------------------------------------------------- Texte (ES Standard, DE umschaltbar)
 const I = {
   es: {
@@ -35,6 +54,8 @@ const I = {
     learnedOf: 'aprendidas', levelVocab: 'Nivel de vocabulario', levelDone: 'Has visto todas las palabras de este nivel. Prueba el siguiente.',
     levelHint: 'Puedes cambiar el nivel en Ajustes.', today: 'Hoy', days: 'días seguidos', goalReached: '🎉 ¡Objetivo diario cumplido!',
     dailyGoal: 'Objetivo diario (ejercicios)', levelSet: 'Nivel',
+    crashMsg: 'La aplicación se reinició. Continúas donde lo dejaste.', crashLight: 'Se activó el modelo ligero. Puedes cambiarlo en Ajustes.',
+    diag: 'Diagnóstico', diagNone: 'Sin reinicios inesperados.', diagIntro: 'Reinicios inesperados (para el soporte):',
     scenes: 'Conversaciones', custom: 'Frase propia', customSub: 'Escribe una frase y practícala',
     trouble: 'Palabras difíciles', troubleSub: 'Tus puntos débiles', settings: 'Ajustes',
     next: 'Siguiente', other: 'Otra respuesta', sayOne: 'Di una de estas respuestas en voz alta:',
@@ -81,6 +102,8 @@ const I = {
     learnedOf: 'gelernt', levelVocab: 'Wortschatz-Stufe', levelDone: 'Du hast alle Wörter dieser Stufe gesehen. Probier die nächste.',
     levelHint: 'Du kannst das Niveau in den Einstellungen ändern.', today: 'Heute', days: 'Tage in Folge', goalReached: '🎉 Tagesziel erreicht!',
     dailyGoal: 'Tagesziel (Übungen)', levelSet: 'Niveau',
+    crashMsg: 'Die App wurde neu gestartet. Du machst dort weiter, wo du warst.', crashLight: 'Das leichtere Modell wurde eingestellt. Du kannst es in den Einstellungen ändern.',
+    diag: 'Diagnose', diagNone: 'Keine unerwarteten Neustarts.', diagIntro: 'Unerwartete Neustarts (für den Support):',
     scenes: 'Gespräche', custom: 'Eigener Satz', customSub: 'Satz eintippen und üben',
     trouble: 'Schwierige Wörter', troubleSub: 'Deine Schwachstellen', settings: 'Einstellungen',
     next: 'Weiter', other: 'Andere Antwort', sayOne: 'Sag eine dieser Antworten laut:',
@@ -132,9 +155,9 @@ function relabel() {
   if (typeof asr !== 'undefined' && asr.state !== 'loading') updateBanner();
 }
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms = 3200) {
   const el = $('#toast'); el.textContent = msg; el.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
 const pct = s => Math.round(s * 100);
 const scoreClass = s => (s >= OK_AB ? 'g' : s >= 0.6 ? 'y' : 'r');
@@ -236,10 +259,11 @@ async function playSeq(steps) {
 }
 const rate = () => (store.settings.slow ? 0.65 : 1);
 const sayStep = (text, r = rate()) => () => speak(text, { rate: r, voiceURI: store.settings.voiceURI });
-function say(text, r) { return playSeq([sayStep(text, r)]); }
+function say(text, r) { mark('vorlesen'); return playSeq([sayStep(text, r)]); }
 
 async function runListen() {
   if (!active) return false;
+  mark('mikrofon');
   setStatus(null);
   const fake = window.__test.fakeText;
   let rec, text = '';
@@ -269,11 +293,11 @@ async function runListen() {
     dock.mic.style.setProperty('--lvl', 0);
     sound('stop');
     if (!rec.hadSpeech) { busy = null; setStatus('err', t('noSpeechMsg')); return false; }
-    busy = 'think'; updateDock();
+    busy = 'think'; updateDock(); mark('erkennung');
     try { text = await asr.transcribe(await toMono16k(normalize(rec.samples), rec.sampleRate)); }
     catch (e) { busy = null; setStatus('err', String(e.message || e)); sound('err'); return false; }
   }
-  busy = null;
+  busy = null; mark('ergebnis');
   if (!active) { updateDock(); return false; }
   if (!text.trim()) { setStatus('err', t('notUnderstood')); sound('err'); return false; }
   return applyHeard(rec, text);
@@ -403,6 +427,7 @@ let titleSrc = 'hello';
 function refreshTitle() { $('#title').textContent = typeof titleSrc === 'string' ? t(titleSrc) : titleSrc[lang()]; }
 function setTitle(src) { titleSrc = src; refreshTitle(); }
 function reset() {
+  SS.del('hablemos.resume');
   stopAudio(); recHandle?.stop();
   setActive(null);
   view.replaceChildren();
@@ -454,12 +479,14 @@ function home() {
 }
 
 // ---------------------------------------------------------------- Gespräch
-function sceneScreen(sc) {
+function sceneScreen(sc, startIdx = 0) {
   screen(() => sceneScreen(sc)); reset(); setTitle(sc.title);
+  const saveResume = i => SS.set('hablemos.resume', JSON.stringify({ id: sc.id, idx: i }));
+  saveResume(startIdx);
   const chat = h('div', { class: 'chat' });
   view.append(chat, legend());
   const results = [];
-  let idx = 0;
+  let idx = startIdx;
 
   // Antwortmöglichkeiten sind erst einmal verborgen: du antwortest aus dem Kopf.
   // Die App ordnet das Gesagte der ähnlichsten erwarteten Antwort zu. Der Hinweis-Knopf zeigt sie an.
@@ -507,11 +534,13 @@ function sceneScreen(sc) {
 
   // Nach einer Runde (beantwortet oder übersprungen): nächste Runde, ggf. mit einem Scherz dazwischen
   function afterTurn(me, joke) {
+    mark('weiter ' + sc.id + ' #' + idx);
     if (me) countActivity();
     me?.querySelector('.row')?.remove();
     if (joke) { nextTurn(); return; }          // idx zeigt schon auf die nächste normale Runde
     idx++;
-    if (idx >= sc.turns.length) { finish(); return; }
+    if (idx >= sc.turns.length) { SS.del('hablemos.resume'); finish(); return; }
+    saveResume(idx);
     if (store.settings.bromas && store.tickBroma()) {
       const b = pickBroma(store.bromaSeen);     // Name im Scherz ist fest: Roland
       store.markBroma(b.id, b.reset);
@@ -640,7 +669,11 @@ function settings() {
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.slow, onchange: e => store.setSetting('slow', e.target.checked) }), T('slowDefault')),
     h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn small ghost', onclick: () => { store.clearTrouble(); toast('✓'); } }, T('reset'))),
     h('p', { class: 'muted small' }, T('persistent')));
-  view.append(nameCard, goalCard, bromaCard, modelCard, voiceCard, optCard);
+  const cr = store.crashes();
+  const diagCard = h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:6px' }, T('diag')),
+    cr.length ? [h('div', { class: 'muted small' }, T('diagIntro')), ...cr.slice(-6).reverse().map(c =>
+      h('div', { class: 'small' }, `${new Date(c.t).toLocaleString()} · ${c.step} · ${c.model}`))] : h('div', { class: 'muted small' }, T('diagNone')));
+  view.append(nameCard, goalCard, bromaCard, modelCard, voiceCard, optCard, diagCard);
   relabel();
 }
 
@@ -851,6 +884,16 @@ function placementScreen() {
 // ---------------------------------------------------------------- Start der App
 relabel();
 home();
+if (crashInfo) {
+  store.addCrash({ ...crashInfo, model: store.settings.model });
+  const recent = store.crashes().filter(c => Date.now() - c.t < 30 * 60000).length;
+  let msg = t('crashMsg');
+  // Zweiter unerwarteter Neustart in kurzer Zeit: wahrscheinlich zu wenig Speicher, kleineres Modell wählen
+  if (recent >= 2 && store.settings.model !== 'tiny') { store.setSetting('model', 'tiny'); msg += ' ' + t('crashLight'); }
+  const sc = resumeAt && sceneList().find(x => x.id === resumeAt.id);
+  if (sc && resumeAt.idx < sc.turns.length) { stack = [home]; sceneScreen(sc, resumeAt.idx); }
+  toast(msg, 8000);
+}
 updateBanner();
 if (store.modelLoaded(store.settings.model)) startModelLoad();    // schon einmal geladen: im Hintergrund wieder aufwecken
 

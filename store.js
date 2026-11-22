@@ -12,6 +12,7 @@ const DEFAULTS = {
   vocab: {},          // wort -> { box, due, seen, last }
   days: {},           // JJJJ-MM-TT -> Anzahl Übungen
   streak: 0, lastGoalDay: '',
+  crashes: [],        // unerwartete Neustarts: { t, step, model }
 };
 
 let data = structuredClone(DEFAULTS);
@@ -88,6 +89,9 @@ export const store = {
     save();
     return { done: data.days[day], goal, reached };
   },
+
+  crashes() { return data.crashes; },
+  addCrash(c) { data.crashes = [...data.crashes, c].slice(-20); save(); },
 
   setBest(id, score) { data.best[id] = Math.max(score, data.best[id] || 0); save(); },
   best(id) { return data.best[id] || 0; },

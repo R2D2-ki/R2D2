@@ -1,6 +1,6 @@
 // Offline-Fähigkeit: App-Dateien und die Bibliothek von jsdelivr werden zwischengespeichert.
 // Die Whisper-Modelldateien speichert transformers.js selbst im Browser-Cache.
-const CACHE = 'hablemos-v5';
+const CACHE = 'hablemos-v6';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'audio.js', 'asr.js', 'worker.js', 'store.js',
   'core/compare.js', 'core/scenes.js', 'core/bromas.js', 'core/srs.js', 'core/vocab.js', 'core/vocab-a1.js', 'core/vocab-a2.js', 'core/vocab-b1.js', 'core/vocab-b2.js', 'core/vocab-c1.js', 'manifest.webmanifest', 'icon-180.png'];
 
