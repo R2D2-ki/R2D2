@@ -26,6 +26,16 @@ const resumeAt = (() => { try { return JSON.parse(SS.get('hablemos.resume')); } 
 addEventListener('pagehide', e => { if (!e.persisted) SS.set('hablemos.clean', '1'); });
 addEventListener('pageshow', e => { if (e.persisted) SS.del('hablemos.clean'); });
 function mark(step) { SS.set('hablemos.step', step); }
+const VERSION = 'v7 · 22.11.2026';
+// Marker für die schweren Schritte (Umrechnen, Erkennung): bleibt er beim Start stehen, wurde die Seite dabei beendet.
+// localStorage statt sessionStorage, damit es auch einen Neustart der ganzen App überlebt.
+const flight = {
+  set(step) { try { localStorage.setItem('hablemos.inflight', JSON.stringify({ step, model: store.settings.model, t: Date.now() })); } catch {} },
+  clear() { try { localStorage.removeItem('hablemos.inflight'); } catch {} },
+  read() { try { return JSON.parse(localStorage.getItem('hablemos.inflight')); } catch { return null; } },
+};
+const flightAtStart = flight.read();
+flight.clear();
 
 // ---------------------------------------------------------------- Texte (ES Standard, DE umschaltbar)
 const I = {
@@ -56,6 +66,9 @@ const I = {
     dailyGoal: 'Objetivo diario (ejercicios)', levelSet: 'Nivel',
     crashMsg: 'La aplicación se reinició. Continúas donde lo dejaste.', crashLight: 'Se activó el modelo ligero. Puedes cambiarlo en Ajustes.',
     diag: 'Diagnóstico', diagNone: 'Sin reinicios inesperados.', diagIntro: 'Reinicios inesperados (para el soporte):',
+    updateApp: 'Actualizar la aplicación', updateHint: 'Si algo no funciona como debería: borra los archivos guardados y recarga la página. Tu progreso se conserva.',
+    crashHeavy: 'La aplicación se cerró durante el reconocimiento de voz (poca memoria). Se activó el modelo ligero: cárgalo una vez arriba.',
+    crashHeavyTiny: 'La aplicación se cerró durante el reconocimiento de voz, incluso con el modelo ligero.', gotIt: 'Entendido',
     scenes: 'Conversaciones', custom: 'Frase propia', customSub: 'Escribe una frase y practícala',
     trouble: 'Palabras difíciles', troubleSub: 'Tus puntos débiles', settings: 'Ajustes',
     next: 'Siguiente', other: 'Otra respuesta', sayOne: 'Di una de estas respuestas en voz alta:',
@@ -104,6 +117,9 @@ const I = {
     dailyGoal: 'Tagesziel (Übungen)', levelSet: 'Niveau',
     crashMsg: 'Die App wurde neu gestartet. Du machst dort weiter, wo du warst.', crashLight: 'Das leichtere Modell wurde eingestellt. Du kannst es in den Einstellungen ändern.',
     diag: 'Diagnose', diagNone: 'Keine unerwarteten Neustarts.', diagIntro: 'Unerwartete Neustarts (für den Support):',
+    updateApp: 'App aktualisieren', updateHint: 'Wenn etwas nicht so funktioniert wie es soll: löscht die gespeicherten Dateien und lädt die Seite neu. Dein Fortschritt bleibt erhalten.',
+    crashHeavy: 'Die App wurde bei der Spracherkennung beendet (zu wenig Speicher). Das leichtere Modell wurde eingestellt: einmal oben laden.',
+    crashHeavyTiny: 'Die App wurde bei der Spracherkennung beendet, auch mit dem leichten Modell.', gotIt: 'Verstanden',
     scenes: 'Gespräche', custom: 'Eigener Satz', customSub: 'Satz eintippen und üben',
     trouble: 'Schwierige Wörter', troubleSub: 'Deine Schwachstellen', settings: 'Einstellungen',
     next: 'Weiter', other: 'Andere Antwort', sayOne: 'Sag eine dieser Antworten laut:',
@@ -275,6 +291,7 @@ async function runListen() {
     busy = 'rec'; voiceNow = false; voiceUntil = 0; updateDock();
     if (store.settings.sounds) await beep('start');
     try {
+      flight.set('aufnahme');
       recHandle = await startRecording({
         autoStop: store.settings.autoStop,
         onLevel: v => {
@@ -286,16 +303,22 @@ async function runListen() {
         },
       });
     } catch (e) {
-      busy = null; recHandle = null; setStatus('err', t('micDenied')); sound('err'); return false;
+      flight.clear(); busy = null; recHandle = null; setStatus('err', t('micDenied')); sound('err'); return false;
     }
     rec = await recHandle.done;
-    recHandle = null;
+    recHandle = null; flight.set('aufnahme-ende');
     dock.mic.style.setProperty('--lvl', 0);
     sound('stop');
-    if (!rec.hadSpeech) { busy = null; setStatus('err', t('noSpeechMsg')); return false; }
+    if (!rec.hadSpeech) { flight.clear(); busy = null; setStatus('err', t('noSpeechMsg')); return false; }
     busy = 'think'; updateDock(); mark('erkennung');
-    try { text = await asr.transcribe(await toMono16k(normalize(rec.samples), rec.sampleRate)); }
-    catch (e) { busy = null; setStatus('err', String(e.message || e)); sound('err'); return false; }
+    try {
+      flight.set('umrechnen');
+      const audio16 = await toMono16k(normalize(rec.samples), rec.sampleRate);
+      flight.set('erkennung');
+      text = await asr.transcribe(audio16);
+      flight.clear();
+    }
+    catch (e) { flight.clear(); busy = null; setStatus('err', String(e.message || e)); sound('err'); return false; }
   }
   busy = null; mark('ergebnis');
   if (!active) { updateDock(); return false; }
@@ -442,12 +465,16 @@ $('#btnSet').addEventListener('click', () => { push(currentScreen); settings(); 
 let currentScreen = () => home();
 function screen(fn) { currentScreen = fn; }
 
+let crashNote = null;     // Hinweis nach einem Absturz, bleibt auf der Startseite bis „Verstanden“
+
 // ---------------------------------------------------------------- Start
 const sceneList = () => personalize(SCENES, store.settings.name);
 
 function home() {
   stack = [];
   screen(home); reset(); setTitle('hello');
+  if (crashNote) view.append(h('div', { class: 'card', style: 'border-color:var(--wrong)' }, h('div', {}, crashNote),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn small', onclick: e => { crashNote = null; e.currentTarget.closest('.card').remove(); } }, T('gotIt')))));
   view.append(statsCard());
   const lvl = store.settings.level;
   const cnt = counts(VOCAB, store.vocabState(), { level: vocabLevel() });
@@ -475,6 +502,7 @@ function home() {
     h('button', { class: 'tile wide', onclick: () => { push(home); troubleScreen(); } },
       h('div', { class: 'e' }, '🎯'), h('div', {}, h('div', { class: 'n' }, T('trouble'), ` (${store.trouble().length})`), h('div', { class: 's' }, T('troubleSub')))));
   view.append(grid);
+  view.append(h('div', { class: 'muted small', style: 'margin-top:14px;text-align:center' }, 'Hablemos ' + VERSION));
   relabel();
 }
 
@@ -669,11 +697,17 @@ function settings() {
     h('label', { class: 'opt-row' }, h('input', { type: 'checkbox', checked: s.slow, onchange: e => store.setSetting('slow', e.target.checked) }), T('slowDefault')),
     h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn small ghost', onclick: () => { store.clearTrouble(); toast('✓'); } }, T('reset'))),
     h('p', { class: 'muted small' }, T('persistent')));
-  const cr = store.crashes();
+  const cr = store.crashes?.() || [];
   const diagCard = h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:6px' }, T('diag')),
+    h('div', { class: 'small', style: 'margin-bottom:6px' }, 'Hablemos ' + VERSION),
     cr.length ? [h('div', { class: 'muted small' }, T('diagIntro')), ...cr.slice(-6).reverse().map(c =>
       h('div', { class: 'small' }, `${new Date(c.t).toLocaleString()} · ${c.step} · ${c.model}`))] : h('div', { class: 'muted small' }, T('diagNone')));
-  view.append(nameCard, goalCard, bromaCard, modelCard, voiceCard, optCard, diagCard);
+  const updCard = h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:6px' }, T('updateApp')), h('div', { class: 'muted small' }, T('updateHint')),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn small', onclick: async () => {
+      try { for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); for (const k of await caches.keys()) await caches.delete(k); } catch {}
+      location.reload();
+    } }, T('updateApp'))));
+  view.append(nameCard, goalCard, bromaCard, modelCard, voiceCard, optCard, updCard, diagCard);
   relabel();
 }
 
@@ -883,16 +917,28 @@ function placementScreen() {
 
 // ---------------------------------------------------------------- Start der App
 relabel();
-home();
-if (crashInfo) {
-  store.addCrash({ ...crashInfo, model: store.settings.model });
-  const recent = store.crashes().filter(c => Date.now() - c.t < 30 * 60000).length;
-  let msg = t('crashMsg');
-  // Zweiter unerwarteter Neustart in kurzer Zeit: wahrscheinlich zu wenig Speicher, kleineres Modell wählen
-  if (recent >= 2 && store.settings.model !== 'tiny') { store.setSetting('model', 'tiny'); msg += ' ' + t('crashLight'); }
-  const sc = resumeAt && sceneList().find(x => x.id === resumeAt.id);
-  if (sc && resumeAt.idx < sc.turns.length) { stack = [home]; sceneScreen(sc, resumeAt.idx); }
-  toast(msg, 8000);
+{
+  // Absturz erkannt: entweder hat der Marker eines schweren Schritts überlebt (sicher) oder 'pagehide' fehlte (wahrscheinlich)
+  const crash = flightAtStart ? { step: flightAtStart.step, t: Date.now() } : crashInfo;
+  let msg = '';
+  if (crash) {
+    const model = flightAtStart?.model || store.settings.model;
+    store.addCrash({ ...crash, model });
+    const heavy = flightAtStart && ['umrechnen', 'erkennung'].includes(flightAtStart.step);
+    const recent = store.crashes().filter(c => Date.now() - c.t < 30 * 60000).length;
+    msg = t('crashMsg');
+    // Beim Umrechnen oder Erkennen beendet: zu wenig Speicher, sofort das kleinere Modell. Sonst erst beim zweiten Mal.
+    if ((heavy || recent >= 2) && store.settings.model !== 'tiny') {
+      store.setSetting('model', 'tiny'); msg += ' ' + t('crashLight');
+      if (heavy) crashNote = t('crashHeavy');
+    } else if (heavy) crashNote = t('crashHeavyTiny');
+  }
+  home();
+  if (crash) {
+    const sc = resumeAt && sceneList().find(x => x.id === resumeAt.id);
+    if (sc && resumeAt.idx < sc.turns.length) { stack = [home]; sceneScreen(sc, resumeAt.idx); }
+    toast(msg, 8000);
+  }
 }
 updateBanner();
 if (store.modelLoaded(store.settings.model)) startModelLoad();    // schon einmal geladen: im Hintergrund wieder aufwecken

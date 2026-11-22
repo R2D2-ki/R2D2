@@ -26,6 +26,7 @@ self.onmessage = async e => {
         language: 'spanish',
         task: 'transcribe',
         chunk_length_s: 30,
+        max_new_tokens: 96,          // Übungssätze sind kurz: begrenzt Rechenzeit und Speicher, stoppt Endlosschleifen
         return_timestamps: false,
       });
       self.postMessage({ type: 'result', id: m.id, text: (out.text || '').trim() });
